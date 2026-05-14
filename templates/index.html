@@ -1,78 +1,119 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Consolidador Amazon — clustering de columnas</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-    p.lead { color: #555; margin-top: 0; }
-    section { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
-    section h2 { margin-top: 0; font-size: 1.05rem; }
-    table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-    th, td { border: 1px solid #e0e0e0; padding: 4px 8px; text-align: left; vertical-align: top; }
-    th { background: #f5f5f5; }
-    .scroll { overflow-x: auto; }
-    form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-    button { padding: 6px 14px; cursor: pointer; }
-    .meta { color: #555; font-size: 0.9rem; }
-    .cluster { margin: 0.25rem 0; padding: 0.4rem 0.6rem; background: #f8f8f8; border-left: 3px solid #888; }
-    .cluster.fusionado { border-left-color: #2a7; }
-    .badge { display: inline-block; background: #eee; padding: 1px 6px; border-radius: 3px; font-size: 0.75rem; margin-right: 4px; }
-    .error { color: #b00; }
-    .vacio { color: #888; font-style: italic; }
+    :root {
+      --pico-font-size: 95%;
+      --pico-spacing: 1rem;
+    }
+    main { padding-block: 2rem; }
+    .meta { color: var(--pico-muted-color); font-size: 0.85rem; margin: 0; }
+    .scroll { overflow-x: auto; max-height: 420px; }
+    .scroll table { font-size: 0.82rem; margin: 0; }
+    .scroll th { position: sticky; top: 0; background: var(--pico-background-color); z-index: 1; }
+    .scroll td { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cluster { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; margin-bottom: 0.35rem; border-radius: 4px; background: var(--pico-card-sectioning-background-color); border-left: 3px solid var(--pico-muted-border-color); flex-wrap: wrap; }
+    .cluster.fusionado { border-left-color: var(--pico-primary); }
+    .cluster code { background: transparent; padding: 0; }
+    .badge { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--pico-muted-border-color); color: var(--pico-color); }
+    .fusionado .badge { background: var(--pico-primary); color: var(--pico-primary-inverse); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin: 0.5rem 0 1rem; }
+    .stats > div { background: var(--pico-card-sectioning-background-color); padding: 0.6rem 0.8rem; border-radius: 6px; }
+    .stats strong { display: block; font-size: 1.4rem; line-height: 1.2; }
+    .stats span { font-size: 0.75rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.04em; }
+    form { display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; margin: 0; }
+    form input[type=file] { margin: 0; flex: 1 1 240px; }
+    form button { margin: 0; width: auto; }
+    .estado { margin-top: 0.75rem; min-height: 1.2em; }
+    .estado.error { color: var(--pico-del-color); }
+    article header { margin-bottom: 0.5rem; }
+    article h2, article h3 { margin: 0; }
+    article + article { margin-top: 1rem; }
+    .fusiones-lista { margin: 0; padding-left: 1.2rem; }
+    .fusiones-lista li { margin-bottom: 0.2rem; }
+    .vacio { color: var(--pico-muted-color); font-style: italic; }
   </style>
 </head>
 <body>
-  <h1>Consolidador Amazon — clustering de columnas</h1>
-  <p class="lead">Sube uno o varios archivos <code>.xlsx</code>. El backend acumula las filas y vuelve a correr el clustering TF-IDF + K-means para identificar columnas equivalentes.</p>
+  <main class="container">
+    <hgroup>
+      <h1>Consolidador Amazon</h1>
+      <p>Sube archivos <code>.xlsx</code>. El backend acumula filas, vuelve a correr TF-IDF + K-means e identifica columnas equivalentes.</p>
+    </hgroup>
 
-  <section>
-    <h2>Cargar archivo</h2>
-    <form id="form-subir">
-      <input type="file" name="file" accept=".xlsx" required>
-      <button type="submit">Subir</button>
-      <button type="button" id="btn-reiniciar">Reiniciar</button>
-    </form>
-    <p id="estado" class="meta"></p>
-  </section>
+    <article>
+      <header>
+        <h2>Cargar archivo</h2>
+      </header>
+      <form id="form-subir">
+        <input type="file" name="file" accept=".xlsx" required aria-label="Archivo xlsx">
+        <button type="submit">Subir</button>
+        <button type="button" id="btn-reiniciar" class="secondary outline">Reiniciar</button>
+      </form>
+      <p id="estado" class="estado meta"></p>
+      <div id="stats" class="stats" hidden></div>
+    </article>
 
-  <section id="seccion-head" hidden>
-    <h2>Vista previa (head)</h2>
-    <div class="scroll"><table id="tabla-head"></table></div>
-  </section>
+    <article id="seccion-clusters" hidden>
+      <header>
+        <h2>Campos unificados</h2>
+        <p class="meta">Umbral de fusión: <strong id="umbral"></strong> · K_real: <strong id="k-real"></strong></p>
+      </header>
+      <div id="lista-clusters"></div>
+      <details style="margin-top: 1rem;">
+        <summary>Pares fusionados</summary>
+        <div id="lista-fusiones"></div>
+      </details>
+    </article>
 
-  <section id="seccion-info" hidden>
-    <h2>Info de campos</h2>
-    <div class="scroll"><table id="tabla-info"></table></div>
-  </section>
+    <article id="seccion-head" hidden>
+      <header><h2>Vista previa (head)</h2></header>
+      <div class="scroll"><table id="tabla-head"></table></div>
+    </article>
 
-  <section id="seccion-clusters" hidden>
-    <h2>Campos unificados (clusters)</h2>
-    <p class="meta">Umbral de fusión: <span id="umbral"></span>. K_real (variables únicas detectadas): <span id="k-real"></span>.</p>
-    <div id="lista-clusters"></div>
-    <h3 style="font-size: 0.95rem; margin-top: 1rem;">Pares fusionados</h3>
-    <div id="lista-fusiones"></div>
-  </section>
+    <article id="seccion-info" hidden>
+      <header><h2>Info de campos</h2></header>
+      <div class="scroll"><table id="tabla-info"></table></div>
+    </article>
+  </main>
 
   <script>
     const form = document.getElementById('form-subir');
     const estado = document.getElementById('estado');
     const btnReiniciar = document.getElementById('btn-reiniciar');
 
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
     function tablaDesdeRegistros(registros) {
       if (!registros.length) return '';
       const cols = Object.keys(registros[0]);
-      const head = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+      const head = '<thead><tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
       const body = '<tbody>' + registros.map(r =>
-        '<tr>' + cols.map(c => `<td>${(r[c] ?? '').toString().slice(0, 200)}</td>`).join('') + '</tr>'
+        '<tr>' + cols.map(c => `<td title="${escapeHtml(r[c])}">${escapeHtml(String(r[c] ?? '').slice(0, 200))}</td>`).join('') + '</tr>'
       ).join('') + '</tbody>';
       return head + body;
     }
 
     function renderizar(data) {
-      estado.textContent = `Archivos cargados: ${data.archivos.join(', ') || '(ninguno)'} — ${data.filas} filas × ${data.columnas} columnas.`;
+      estado.textContent = data.archivos.length
+        ? `Archivos cargados: ${data.archivos.join(', ')}.`
+        : 'Sin archivos cargados.';
       estado.classList.remove('error');
+
+      const stats = document.getElementById('stats');
+      stats.hidden = false;
+      stats.innerHTML = `
+        <div><strong>${data.filas}</strong><span>Filas</span></div>
+        <div><strong>${data.columnas}</strong><span>Columnas</span></div>
+        <div><strong>${data.k_real}</strong><span>K_real</span></div>
+        <div><strong>${data.fusiones.length}</strong><span>Pares fusionados</span></div>
+      `;
 
       const secHead = document.getElementById('seccion-head');
       const secInfo = document.getElementById('seccion-info');
@@ -100,17 +141,17 @@
         cont.innerHTML = ids.map(id => {
           const miembros = data.clusters[id];
           const cls = miembros.length > 1 ? 'cluster fusionado' : 'cluster';
-          return `<div class="${cls}"><span class="badge">Cluster ${id}</span>${miembros.map(m => `<code>${m}</code>`).join(', ')}</div>`;
+          return `<div class="${cls}"><span class="badge">#${escapeHtml(id)}</span>${miembros.map(m => `<code>${escapeHtml(m)}</code>`).join(' · ')}</div>`;
         }).join('');
       }
 
       const fus = document.getElementById('lista-fusiones');
       if (!data.fusiones.length) {
-        fus.innerHTML = '<p class="vacio">Aún no hay pares fusionados (similitud ≥ ' + data.umbral + ').</p>';
+        fus.innerHTML = `<p class="vacio">Aún no hay pares fusionados (similitud ≥ ${data.umbral}).</p>`;
       } else {
-        fus.innerHTML = '<ul>' + data.fusiones.map(f =>
-          `<li><code>${f.a}</code> ↔ <code>${f.b}</code> &nbsp;<span class="meta">sim = ${f.sim}</span></li>`
-        ).join('') + '</ul>';
+        fus.innerHTML = '<ol class="fusiones-lista">' + data.fusiones.map(f =>
+          `<li><code>${escapeHtml(f.a)}</code> ↔ <code>${escapeHtml(f.b)}</code> <span class="meta">sim = ${f.sim}</span></li>`
+        ).join('') + '</ol>';
       }
       secCl.hidden = false;
     }
@@ -125,6 +166,7 @@
       e.preventDefault();
       const fd = new FormData(form);
       estado.textContent = 'Procesando…';
+      estado.classList.remove('error');
       try {
         const r = await fetch('/subir', { method: 'POST', body: fd });
         const data = await r.json();
@@ -146,6 +188,7 @@
       document.getElementById('seccion-head').hidden = true;
       document.getElementById('seccion-info').hidden = true;
       document.getElementById('seccion-clusters').hidden = true;
+      document.getElementById('stats').hidden = true;
       estado.textContent = 'Estado reiniciado.';
       estado.classList.remove('error');
     });
