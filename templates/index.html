@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Consolidador Amazon — clustering de columnas</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+    p.lead { color: #555; margin-top: 0; }
+    section { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
+    section h2 { margin-top: 0; font-size: 1.05rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+    th, td { border: 1px solid #e0e0e0; padding: 4px 8px; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; }
+    .scroll { overflow-x: auto; }
+    form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    button { padding: 6px 14px; cursor: pointer; }
+    .meta { color: #555; font-size: 0.9rem; }
+    .cluster { margin: 0.25rem 0; padding: 0.4rem 0.6rem; background: #f8f8f8; border-left: 3px solid #888; }
+    .cluster.fusionado { border-left-color: #2a7; }
+    .badge { display: inline-block; background: #eee; padding: 1px 6px; border-radius: 3px; font-size: 0.75rem; margin-right: 4px; }
+    .error { color: #b00; }
+    .vacio { color: #888; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Consolidador Amazon — clustering de columnas</h1>
+  <p class="lead">Sube uno o varios archivos <code>.xlsx</code>. El backend acumula las filas y vuelve a correr el clustering TF-IDF + K-means para identificar columnas equivalentes.</p>
+
+  <section>
+    <h2>Cargar archivo</h2>
+    <form id="form-subir">
+      <input type="file" name="file" accept=".xlsx" required>
+      <button type="submit">Subir</button>
+      <button type="button" id="btn-reiniciar">Reiniciar</button>
+    </form>
+    <p id="estado" class="meta"></p>
+  </section>
+
+  <section id="seccion-head" hidden>
+    <h2>Vista previa (head)</h2>
+    <div class="scroll"><table id="tabla-head"></table></div>
+  </section>
+
+  <section id="seccion-info" hidden>
+    <h2>Info de campos</h2>
+    <div class="scroll"><table id="tabla-info"></table></div>
+  </section>
+
+  <section id="seccion-clusters" hidden>
+    <h2>Campos unificados (clusters)</h2>
+    <p class="meta">Umbral de fusión: <span id="umbral"></span>. K_real (variables únicas detectadas): <span id="k-real"></span>.</p>
+    <div id="lista-clusters"></div>
+    <h3 style="font-size: 0.95rem; margin-top: 1rem;">Pares fusionados</h3>
+    <div id="lista-fusiones"></div>
+  </section>
+
+  <script>
+    const form = document.getElementById('form-subir');
+    const estado = document.getElementById('estado');
+    const btnReiniciar = document.getElementById('btn-reiniciar');
+
+    function tablaDesdeRegistros(registros) {
+      if (!registros.length) return '';
+      const cols = Object.keys(registros[0]);
+      const head = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+      const body = '<tbody>' + registros.map(r =>
+        '<tr>' + cols.map(c => `<td>${(r[c] ?? '').toString().slice(0, 200)}</td>`).join('') + '</tr>'
+      ).join('') + '</tbody>';
+      return head + body;
+    }
+
+    function renderizar(data) {
+      estado.textContent = `Archivos cargados: ${data.archivos.join(', ') || '(ninguno)'} — ${data.filas} filas × ${data.columnas} columnas.`;
+      estado.classList.remove('error');
+
+      const secHead = document.getElementById('seccion-head');
+      const secInfo = document.getElementById('seccion-info');
+      const secCl = document.getElementById('seccion-clusters');
+
+      if (!data.head || !data.head.length) {
+        secHead.hidden = true; secInfo.hidden = true; secCl.hidden = true;
+        return;
+      }
+
+      document.getElementById('tabla-head').innerHTML = tablaDesdeRegistros(data.head);
+      secHead.hidden = false;
+
+      document.getElementById('tabla-info').innerHTML = tablaDesdeRegistros(data.info);
+      secInfo.hidden = false;
+
+      document.getElementById('umbral').textContent = data.umbral;
+      document.getElementById('k-real').textContent = data.k_real;
+
+      const cont = document.getElementById('lista-clusters');
+      const ids = Object.keys(data.clusters);
+      if (!ids.length) {
+        cont.innerHTML = '<p class="vacio">Sin clusters todavía.</p>';
+      } else {
+        cont.innerHTML = ids.map(id => {
+          const miembros = data.clusters[id];
+          const cls = miembros.length > 1 ? 'cluster fusionado' : 'cluster';
+          return `<div class="${cls}"><span class="badge">Cluster ${id}</span>${miembros.map(m => `<code>${m}</code>`).join(', ')}</div>`;
+        }).join('');
+      }
+
+      const fus = document.getElementById('lista-fusiones');
+      if (!data.fusiones.length) {
+        fus.innerHTML = '<p class="vacio">Aún no hay pares fusionados (similitud ≥ ' + data.umbral + ').</p>';
+      } else {
+        fus.innerHTML = '<ul>' + data.fusiones.map(f =>
+          `<li><code>${f.a}</code> ↔ <code>${f.b}</code> &nbsp;<span class="meta">sim = ${f.sim}</span></li>`
+        ).join('') + '</ul>';
+      }
+      secCl.hidden = false;
+    }
+
+    async function refrescarEstado() {
+      const r = await fetch('/estado');
+      const data = await r.json();
+      if (data.filas) renderizar(data);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      estado.textContent = 'Procesando…';
+      try {
+        const r = await fetch('/subir', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) {
+          estado.textContent = data.detail || 'Error al subir';
+          estado.classList.add('error');
+          return;
+        }
+        renderizar(data);
+        form.reset();
+      } catch (err) {
+        estado.textContent = 'Error de red: ' + err.message;
+        estado.classList.add('error');
+      }
+    });
+
+    btnReiniciar.addEventListener('click', async () => {
+      await fetch('/reiniciar', { method: 'POST' });
+      document.getElementById('seccion-head').hidden = true;
+      document.getElementById('seccion-info').hidden = true;
+      document.getElementById('seccion-clusters').hidden = true;
+      estado.textContent = 'Estado reiniciado.';
+      estado.classList.remove('error');
+    });
+
+    refrescarEstado();
+  </script>
+</body>
+</html>
