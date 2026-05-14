@@ -70,7 +70,9 @@ def _resumen(df: pd.DataFrame) -> dict:
     return {
         'archivos': list(_archivos),
         'filas': int(df.shape[0]),
-        'columnas': int(df.shape[1]),
+        # `columnas` excluye archivo_origen (metadata interna) para que el
+        # numero refleje los campos reales del usuario y cuadre con K_real.
+        'columnas': int(sum(1 for c in df.columns if c not in META)),
         'head': head,
         'info': info,
         'k_real': k_real,
