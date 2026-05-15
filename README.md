@@ -1,8 +1,14 @@
-# Consolidador Amazon — Proyecto I
+# Steven Guzman Angulo
+# Especialización en Ciencia de Datos e Inteligencia Artificial.
+## Proyecto I
 
-Trabajo formativo para el curso **Proyecto I** de la **Especialización en Data & IA**. El proyecto toma cuatro archivos `.xlsx` con datos de productos de Amazon, los consolida en un único DataFrame y descubre automáticamente qué columnas son equivalentes entre sí, aunque vengan con nombres distintos en español o inglés (`categoria` ↔ `category`, `nombre_producto` ↔ `product_name`, etc.).
+## Dynamic Ingestion
+
+Trabajo formativo para el curso **Proyecto I** de la **Especialización en Data & IA**. El proyecto consiste en un importador dinamico pensado para importar archivos planos a SQL, buscando solucionar un problema comun en las empresas que es el dinamismo y cambios constantes en las columnas, posiciones y nombres dentro de los archivos.
 
 La parte interesante no es la EDA en sí, sino **cómo se reconcilian los campos heterogéneos sin un mapeo manual**: cada columna se trata como un documento de texto, se vectoriza con TF-IDF y un par de algoritmos de clustering deciden cuáles son variantes del mismo concepto.
+
+Esto permite que si una columna cambia por una mala gestión del archivo de Excel, no se rompa el flujo ETL de la compañia si no que se reconcilie automáticamente
 
 Sobre esa lógica se monta una pequeña API en FastAPI con una interfaz web para subir archivos y ver los resultados en vivo. Todo se puede correr con Docker.
 
@@ -30,6 +36,10 @@ El reparto actual:
 - `templates/index.html` — frontend HTML con CSS classless (Pico.css) y JS vanilla.
 - `consolidado.ipynb` — superficie narrativa. Solo importa, llama y muestra; no contiene lógica que no esté ya en `src/`.
 
+### Uso de venv
+
+Siguiendo las instruciones en clase se montan los respectivos paquetes dentro de venv y se documentan en requirements.txt, sin embargo el aplicativo fue optimizado para funcionar principalmente en Docker donde ya cuenta con las librerias necesarias, el uso de venv obedece principalmente a los requerimientos del curso.
+
 ### Uso de Git y GitHub
 
 GitHub forma parte de la evaluación, así que el flujo es deliberado:
@@ -46,7 +56,7 @@ Se usó FastAPI por tres razones concretas:
 2. **Tipado y validación** automáticos en los endpoints.
 3. **Arranque mínimo** con `uvicorn`, ideal para un demo de un solo usuario.
 
-El estado del DataFrame acumulado vive en memoria del proceso: es un demo, no requiere base de datos ni sesiones.
+El estado del DataFrame acumulado vive en memoria del proceso: es un demo, no requiere base de datos ni sesiones para fines formativos y simplicidad, en el momento del despliegue en ambiente productivo, se insertarían los datos directamente a una base de SQL.
 
 ### Docker
 
@@ -64,11 +74,11 @@ El núcleo conceptual del proyecto. Cada columna del DataFrame se transforma en 
 
 Para juzgar si el umbral es estable se calcula la **brecha**: la diferencia entre el menor par fusionado y el mayor par no fusionado. Cuanto más grande la brecha, menos sensible es el resultado a mover el umbral.
 
-> Una nota sobre Jaccard: la similitud Jaccard por valores **no funciona** aquí porque cada archivo tiene productos distintos. Los conjuntos de valores entre columnas equivalentes no se solapan. TF-IDF gana porque captura el vocabulario compartido (`Electronics`, `Home&Kitchen`) aunque las filas concretas difieran.
+Se trato de revisar si el problema se optimizada con el uso de Jaccard, pero se identifico que la similitud Jaccard por valores **no funciona** aquí porque cada archivo tiene productos distintos. Los conjuntos de valores entre columnas equivalentes no se solapan. TF-IDF gana porque captura el vocabulario compartido (`Electronics`, `Home&Kitchen`) aunque las filas concretas difieran.
 
 ---
 
-## Despliegue paso a paso
+## Despliegue paso a paso para revisar y desplegar el proyecto
 
 ### Opción A — Docker (recomendada)
 
